@@ -1,0 +1,319 @@
+/**
+ * box-manager.css — Styles cho TGS Box Manager plugin
+ *
+ * @package tgs_box_manager
+ */
+
+/* ── Search wrap z-index ─────────────────────────────────────────── */
+.box-search-wrap {
+    position: relative;
+    z-index: 110;
+}
+
+/* ── Box Info Card (detail page) ─────────────────────────────────── */
+.box-info-card {
+    overflow: hidden;
+    border: none;
+    box-shadow: 0 2px 12px rgba(105, 108, 255, 0.08);
+}
+
+.box-info-code-col {
+    background: linear-gradient(135deg, #696cff 0%, #5b5eea 100%);
+    color: #fff;
+    min-width: 180px;
+    padding: 24px 20px;
+    text-align: center;
+}
+
+.box-info-code-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    opacity: 0.75;
+    margin-bottom: 6px;
+}
+
+.box-info-code-value {
+    font-size: 15px;
+    font-weight: 700;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 1.5px;
+    background: rgba(255, 255, 255, 0.15);
+    padding: 6px 14px;
+    border-radius: 8px;
+    word-break: break-all;
+}
+
+.box-info-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.box-info-item-icon {
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: #f0f2ff;
+    color: #696cff;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.box-info-item-label {
+    font-size: 11px;
+    color: #a1acb8;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    line-height: 1;
+    margin-bottom: 3px;
+}
+
+.box-info-item-value {
+    font-size: 13px;
+    font-weight: 600;
+    color: #566a7f;
+    line-height: 1.3;
+}
+
+/* ── Product dropdown (create page) ──────────────────────────────── */
+.box-product-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 9999;
+    max-height: 320px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #d4d8dd;
+    border-top: 2px solid #696cff;
+    border-radius: 0 0 8px 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+/* ── Search dropdown (detail page — search lots) ─────────────────── */
+.box-search-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 9999;
+    max-height: 400px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #d4d8dd;
+    border-top: 2px solid #71dd37;
+    border-radius: 0 0 8px 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+/* ── Dropdown items ──────────────────────────────────────────────── */
+.box-dd-item {
+    display: block;
+    padding: 10px 14px;
+    text-decoration: none;
+    color: #333;
+    border-bottom: 1px solid #f0f0f0;
+    transition: background 0.15s;
+    cursor: pointer;
+}
+.box-dd-item:last-child { border-bottom: none; }
+.box-dd-item:hover,
+.box-dd-item:focus {
+    background: #f0f4ff;
+    color: #333;
+    text-decoration: none;
+}
+.box-dd-item.box-dd-empty {
+    color: #999;
+    text-align: center;
+    padding: 16px;
+    cursor: default;
+}
+.box-dd-item.box-dd-empty:hover { background: #fff; }
+
+.box-dd-item.box-dd-selected {
+    background: #f0fdf4;
+    border-left: 3px solid #71dd37;
+}
+.box-dd-item.box-dd-selected:hover {
+    background: #dcfce7;
+}
+
+.box-dd-name {
+    font-weight: 600;
+    font-size: 13px;
+    line-height: 1.3;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.box-dd-meta {
+    display: flex;
+    gap: 12px;
+    font-size: 11.5px;
+    color: #888;
+}
+
+/* ── Toast notification ──────────────────────────────────────────── */
+.box-toast {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    z-index: 99999;
+    background: #1e293b;
+    color: #fff;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 13px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+    opacity: 0;
+    transform: translateY(20px);
+    transition: all 0.3s ease;
+    max-width: 420px;
+}
+.box-toast.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* ── Row selection (detail page) ─────────────────────────────────── */
+.lot-row {
+    transition: background 0.15s, border-color 0.15s;
+    cursor: pointer;
+}
+
+.box-row-selected {
+    background-color: #f0f8ff !important;
+    border-left: 3px solid #696cff;
+}
+
+.box-row-selected td {
+    background-color: transparent !important;
+}
+
+/* ── Checkbox style ──────────────────────────────────────────────── */
+.form-check-input:checked {
+    background-color: #696cff;
+    border-color: #696cff;
+}
+
+/* ── Box row hover in list ───────────────────────────────────────── */
+.box-row:hover {
+    background-color: #f5f5f9 !important;
+}
+
+/* ── Status buttons ──────────────────────────────────────────────── */
+.box-status-btn {
+    transition: all 0.2s ease;
+}
+.box-status-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* ── Chip remove icon ────────────────────────────────────────────── */
+.box-chip-remove {
+    vertical-align: middle;
+    font-size: 14px;
+    margin-left: 3px;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+.box-chip-remove:hover {
+    opacity: 1;
+}
+
+/* ── Result card animation ───────────────────────────────────────── */
+#resultCard {
+    animation: fadeInUp 0.3s ease;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(15px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ── Error banner ────────────────────────────────────────────────── */
+.box-error-banner {
+    border-left: 4px solid #dc2626;
+    background: #fef2f2;
+    color: #991b1b;
+    font-size: 13px;
+    margin-bottom: 16px;
+    animation: shakeX 0.4s ease;
+}
+.box-error-banner strong {
+    color: #dc2626;
+}
+
+@keyframes shakeX {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-6px); }
+    40%, 80% { transform: translateX(6px); }
+}
+
+/* ── Print config toggle buttons ──────────────────────────── */
+.print-opt-toggle {
+    border: 1px solid #d4d8dd;
+    background: #f5f5f9;
+    color: #8592a3;
+    border-radius: 20px;
+    padding: 4px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+.print-opt-toggle:hover {
+    border-color: #696cff;
+    color: #696cff;
+    background: #f0f2ff;
+}
+.print-opt-toggle.active {
+    border-color: #696cff;
+    background: #696cff;
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(105, 108, 255, 0.3);
+}
+.print-opt-toggle.active:hover {
+    background: #5f63e8;
+    border-color: #5f63e8;
+}
+.print-opt-toggle .toggle-icon {
+    font-size: 14px;
+    vertical-align: -2px;
+}
+
+/* ── Scan input pulse khi đang xử lý ────────────────────────────── */
+#scanBarcodeInput:disabled {
+    animation: pulse 0.6s ease infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 0.3; }
+}
+
+/* ── Barcode code style ──────────────────────────────────────────── */
+code {
+    background: #f8f9fa;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12.5px;
+    color: #697a8d;
+}
