@@ -78,9 +78,10 @@
 
     function lotStatusBadge(status) {
         const map = {
-            100: ['bg-label-warning', 'Đã sinh'],
+            100: ['bg-label-warning', 'Trống'],
             1: ['bg-label-success', 'Kho'],
             0: ['bg-label-dark', 'Đã bán'],
+            '-1': ['bg-label-danger', 'Hư hỏng'],
         };
         const s = map[status] || ['bg-label-secondary', status];
         return '<span class="badge ' + s[0] + '">' + s[1] + '</span>';
@@ -504,18 +505,19 @@
 
         if (!barcodes.length) { showToast('❌ Không tìm thấy barcode.', 'danger'); return; }
 
+        const showName    = $('#optLotShowName').data('active') ? 1 : 0;
         const showPrice   = $('#optLotShowPrice').data('active') ? 1 : 0;
         const showVariant = $('#optLotShowVariant').data('active') ? 1 : 0;
         const showLot     = $('#optLotShowLot').data('active') ? 1 : 0;
 
-        // Dùng endpoint của lot_generator để in (cùng format)
         const url = C.ajaxUrl + '?' + $.param({
-            action: 'tgs_lot_gen_print_barcodes',
-            nonce: C.lotNonce || C.nonce,
+            action: 'tgs_box_print_lot_barcodes',
+            nonce: C.nonce,
             barcodes: barcodes.join(','),
+            show_name: showName,
             show_price: showPrice,
             show_variant: showVariant,
-            show_lot_info: showLot
+            show_lot: showLot
         });
 
         window.open(url, '_blank', 'width=800,height=600');

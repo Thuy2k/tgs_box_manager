@@ -225,6 +225,9 @@ $box_id = intval($_GET['box_id'] ?? 0);
             <!-- Cấu hình in mã định danh -->
             <div class="d-flex flex-wrap align-items-center gap-3">
                 <span class="text-muted fw-semibold" style="font-size:12px;"><i class="bx bx-cog me-1"></i>Nhãn in mã định danh:</span>
+                <button type="button" class="btn btn-sm print-opt-toggle active" id="optLotShowName" data-active="1">
+                    <i class="bx bx-check me-1 toggle-icon"></i>Tên SP
+                </button>
                 <button type="button" class="btn btn-sm print-opt-toggle active" id="optLotShowPrice" data-active="1">
                     <i class="bx bx-check me-1 toggle-icon"></i>Giá bán
                 </button>

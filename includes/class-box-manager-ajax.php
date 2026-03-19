@@ -38,6 +38,7 @@ class TGS_Box_Manager_Ajax
             // ── D. Trạng thái & In ──
             'tgs_box_update_status',
             'tgs_box_print_label',
+            'tgs_box_print_lot_barcodes',
 
             // ── E. Tìm sản phẩm (autocomplete) ──
             'tgs_box_search_products',
@@ -524,29 +525,48 @@ class TGS_Box_Manager_Ajax
         // Lấy danh sách lots bên trong
         // Ghi chú: LEFT JOIN local_product_name dùng prefix blog hiện tại
         // Hợp lệ vì thùng luôn thao tác trên blog tạo ra nó (source_blog_id)
-        $variants_table = defined('TGS_TABLE_GLOBAL_PRODUCT_VARIANTS')
-            ? TGS_TABLE_GLOBAL_PRODUCT_VARIANTS
-            : 'wp_global_product_variants';
-
         $items = $wpdb->get_results($wpdb->prepare(
             "SELECT l.*,
                     pn.local_product_name,
                     pn.local_product_sku,
-                    pn.local_product_barcode_main,
-                    v.variant_label,
-                    v.variant_value
+                    pn.local_product_barcode_main
              FROM {$lots} l
              LEFT JOIN {$wpdb->prefix}local_product_name pn
                     ON pn.local_product_name_id = l.local_product_name_id
-             LEFT JOIN {$variants_table} v
-                    ON v.variant_id = l.variant_id AND v.is_deleted = 0
              WHERE l.global_box_manager_id = %d AND l.is_deleted = 0
              ORDER BY l.global_product_lot_id ASC",
             $box_id
         ));
 
+        // Lấy variant qua lot_variant_map (many-to-many)
+        $lot_ids_arr = array_map(function ($i) { return (int) $i->global_product_lot_id; }, $items ?: []);
+        $variant_map = [];
+        if (!empty($lot_ids_arr)) {
+            $map_table = defined('TGS_TABLE_GLOBAL_LOT_VARIANT_MAP')
+                ? TGS_TABLE_GLOBAL_LOT_VARIANT_MAP
+                : 'wp_global_lot_variant_map';
+            $var_table = defined('TGS_TABLE_GLOBAL_PRODUCT_VARIANTS')
+                ? TGS_TABLE_GLOBAL_PRODUCT_VARIANTS
+                : 'wp_global_product_variants';
+            $ph = implode(',', array_fill(0, count($lot_ids_arr), '%d'));
+            $var_rows = $wpdb->get_results($wpdb->prepare(
+                "SELECT m.global_product_lot_id, v.variant_label, v.variant_value
+                 FROM {$map_table} m
+                 JOIN {$var_table} v ON v.variant_id = m.variant_id AND v.is_deleted = 0
+                 WHERE m.global_product_lot_id IN ({$ph})
+                 ORDER BY v.variant_sort_order ASC, v.variant_id ASC",
+                ...$lot_ids_arr
+            ));
+            foreach ($var_rows as $vr) {
+                $lid = (int) $vr->global_product_lot_id;
+                if (!isset($variant_map[$lid])) $variant_map[$lid] = [];
+                $variant_map[$lid][] = $vr->variant_label . ': ' . $vr->variant_value;
+            }
+        }
+
         $lot_list = [];
         foreach ($items as $item) {
+            $lid = (int) $item->global_product_lot_id;
             $status = (int) $item->local_product_lot_is_active;
             $lot_list[] = [
                 'lot_id'       => $item->global_product_lot_id,
@@ -555,7 +575,7 @@ class TGS_Box_Manager_Ajax
                 'product_sku'  => $item->local_product_sku ?: '-',
                 'lot_code'     => $item->lot_code ?: '-',
                 'exp_date'     => $item->exp_date,
-                'variant'      => $item->variant_label ? ($item->variant_label . ': ' . $item->variant_value) : '-',
+                'variant'      => !empty($variant_map[$lid]) ? implode(', ', $variant_map[$lid]) : '-',
                 'status'       => $status,
             ];
         }
@@ -1103,5 +1123,205 @@ class TGS_Box_Manager_Ajax
         }
 
         self::json_ok(['boxes' => $boxes]);
+    }
+
+    /* =========================================================================
+     * G. In nhãn mã định danh (từ box detail, có giá/biến thể/lô)
+     * ========================================================================= */
+
+    /**
+     * In nhãn mã định danh với thông tin bổ sung
+     *
+     * GET: barcodes (comma-separated), show_price, show_variant, show_lot
+     */
+    public static function tgs_box_print_lot_barcodes()
+    {
+        if (!check_ajax_referer('tgs_box_mgr_nonce', 'nonce', false)) {
+            wp_die('Nonce không hợp lệ.', 'Lỗi', ['response' => 403]);
+        }
+
+        global $wpdb;
+
+        $barcodes_str = sanitize_text_field($_REQUEST['barcodes'] ?? '');
+        if (empty($barcodes_str)) wp_die('Không có barcode.');
+        $barcodes = array_filter(array_map('trim', explode(',', $barcodes_str)));
+        if (empty($barcodes)) wp_die('Danh sách barcode rỗng.');
+
+        $show_name    = !empty($_REQUEST['show_name']);
+        $show_price   = !empty($_REQUEST['show_price']);
+        $show_variant = !empty($_REQUEST['show_variant']);
+        $show_lot     = !empty($_REQUEST['show_lot']);
+
+        // Query lots + product info
+        $lots_table = self::lots_table();
+        $pn_table   = $wpdb->prefix . 'local_product_name';
+        $ph = implode(',', array_fill(0, count($barcodes), '%s'));
+
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT l.global_product_lot_id, l.global_product_lot_barcode,
+                    l.lot_code, l.exp_date,
+                    pn.local_product_name, pn.local_product_price_after_tax
+             FROM {$lots_table} l
+             LEFT JOIN {$pn_table} pn ON pn.local_product_name_id = l.local_product_name_id
+             WHERE l.global_product_lot_barcode IN ({$ph}) AND l.is_deleted = 0",
+            ...$barcodes
+        ));
+
+        // Index by barcode
+        $lot_map = [];
+        $lot_ids = [];
+        foreach ($rows as $r) {
+            $lot_map[$r->global_product_lot_barcode] = $r;
+            $lot_ids[] = (int) $r->global_product_lot_id;
+        }
+
+        // Query variants via lot_variant_map
+        $variant_map = [];
+        if ($show_variant && !empty($lot_ids)) {
+            $map_table = defined('TGS_TABLE_GLOBAL_LOT_VARIANT_MAP')
+                ? TGS_TABLE_GLOBAL_LOT_VARIANT_MAP
+                : 'wp_global_lot_variant_map';
+            $var_table = defined('TGS_TABLE_GLOBAL_PRODUCT_VARIANTS')
+                ? TGS_TABLE_GLOBAL_PRODUCT_VARIANTS
+                : 'wp_global_product_variants';
+            $vph = implode(',', array_fill(0, count($lot_ids), '%d'));
+            $var_rows = $wpdb->get_results($wpdb->prepare(
+                "SELECT m.global_product_lot_id, v.variant_label, v.variant_value
+                 FROM {$map_table} m
+                 JOIN {$var_table} v ON v.variant_id = m.variant_id AND v.is_deleted = 0
+                 WHERE m.global_product_lot_id IN ({$vph})
+                 ORDER BY v.variant_sort_order ASC",
+                ...$lot_ids
+            ));
+            foreach ($var_rows as $vr) {
+                $lid = (int) $vr->global_product_lot_id;
+                if (!isset($variant_map[$lid])) $variant_map[$lid] = [];
+                $variant_map[$lid][] = $vr->variant_label . ': ' . $vr->variant_value;
+            }
+        }
+
+        // Build enriched data ordered by original barcodes
+        $items = [];
+        foreach ($barcodes as $bc) {
+            $r = $lot_map[$bc] ?? null;
+            $lid = $r ? (int) $r->global_product_lot_id : 0;
+            $items[] = [
+                'barcode'  => $bc,
+                'name'     => $r->local_product_name ?? '',
+                'price'    => $r->local_product_price_after_tax ?? '',
+                'variant'  => isset($variant_map[$lid]) ? implode(', ', $variant_map[$lid]) : '',
+                'lot_code' => $r->lot_code ?? '',
+                'exp_date' => ($r->exp_date ?? '') !== '0000-00-00' ? ($r->exp_date ?? '') : '',
+            ];
+        }
+
+        self::output_lot_print_html($items, $show_name, $show_price, $show_variant, $show_lot);
+        exit;
+    }
+
+    /**
+     * Render HTML in nhãn mã định danh (35×22mm, 2 nhãn/hàng)
+     */
+    private static function output_lot_print_html($items, $show_name, $show_price, $show_variant, $show_lot)
+    {
+        ?>
+        <!DOCTYPE html>
+        <html lang="vi">
+        <head>
+            <meta charset="UTF-8">
+            <title>In Mã Định Danh</title>
+            <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+            <style>
+                @page { size: 70mm 22mm; margin: 0; }
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                html, body { width: 70mm; font-family: Arial, sans-serif; }
+                .barcode-container { display: flex; flex-wrap: wrap; width: 70mm; }
+                .barcode-item {
+                    width: 35mm; height: 22mm;
+                    padding: 0.5mm 1mm;
+                    text-align: center;
+                    display: flex; flex-direction: column; justify-content: center; align-items: center;
+                    overflow: hidden; background: #fff; border: 1px dashed #ccc;
+                }
+                .barcode-item svg { width: 32mm !important; height: 10mm !important; max-height: 10mm; flex-shrink: 0; }
+                .bc-meta { font-size: 5pt; color: #333; line-height: 1.2; max-width: 33mm; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+                .bc-name { font-size: 5.5pt; font-weight: bold; margin-top: 0.3mm; max-width: 33mm; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+                .print-actions {
+                    position: fixed; top: 10px; right: 10px; z-index: 100;
+                    display: flex; gap: 8px;
+                }
+                .print-btn {
+                    padding: 10px 20px; background: #696cff; color: white;
+                    border: none; cursor: pointer; border-radius: 6px; font-size: 14px;
+                }
+                .close-btn {
+                    padding: 10px 20px; background: #8592a3; color: white;
+                    border: none; cursor: pointer; border-radius: 6px; font-size: 14px;
+                }
+                .print-summary {
+                    position: fixed; top: 10px; left: 10px; z-index: 100;
+                    background: #f0f4ff; border: 1px solid #696cff; border-radius: 6px;
+                    padding: 8px 14px; font-size: 12px;
+                }
+                @media print {
+                    .print-actions, .print-summary { display: none; }
+                    .barcode-item { border: none; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="print-actions">
+                <button class="print-btn" onclick="window.print()">🖨️ In nhãn</button>
+                <button class="close-btn" onclick="window.close()">✕ Đóng</button>
+            </div>
+            <div class="print-summary">
+                🏷️ <b><?php echo count($items); ?></b> nhãn mã định danh
+            </div>
+            <div class="barcode-container">
+                <?php foreach ($items as $i => $item): ?>
+                <div class="barcode-item">
+                    <?php if ($show_name && !empty($item['name'])): ?>
+                        <div class="bc-name"><?php echo esc_html($item['name']); ?></div>
+                    <?php endif; ?>
+                    <svg id="bc-<?php echo $i; ?>"></svg>
+                    <?php
+                        $meta_parts = [];
+                        if ($show_price && $item['price'] !== '') {
+                            $meta_parts[] = number_format((float) $item['price'], 0, ',', '.') . 'đ';
+                        }
+                        if ($show_variant && $item['variant'] !== '') {
+                            $meta_parts[] = $item['variant'];
+                        }
+                        if ($show_lot) {
+                            $lot_parts = [];
+                            if ($item['lot_code'] !== '') $lot_parts[] = 'Lô: ' . $item['lot_code'];
+                            if ($item['exp_date'] !== '') {
+                                $lot_parts[] = 'HSD: ' . date('d/m/Y', strtotime($item['exp_date']));
+                            }
+                            if ($lot_parts) $meta_parts[] = implode(' · ', $lot_parts);
+                        }
+                    ?>
+                    <?php if (!empty($meta_parts)): ?>
+                        <div class="bc-meta"><?php echo esc_html(implode(' | ', $meta_parts)); ?></div>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <script>
+            <?php foreach ($items as $i => $item): ?>
+                try {
+                    JsBarcode("#bc-<?php echo $i; ?>", "<?php echo esc_js($item['barcode']); ?>", {
+                        format: "EAN13", width: 2, height: 40, displayValue: true,
+                        fontSize: 11, font: "Arial", margin: 0, textMargin: 1
+                    });
+                } catch(e) {
+                    document.getElementById('bc-<?php echo $i; ?>').parentNode.innerHTML +=
+                        '<div style="font-size:12pt;font-weight:bold;letter-spacing:2px;font-family:monospace;"><?php echo esc_js($item['barcode']); ?></div>';
+                }
+            <?php endforeach; ?>
+            </script>
+        </body>
+        </html>
+        <?php
     }
 }

@@ -104,7 +104,6 @@ add_action('admin_enqueue_scripts', function () {
     }
     if ($view === 'box-detail') {
         wp_enqueue_script('tgs-box-detail', TGS_BOX_MGR_URL . 'assets/js/box-detail.js', ['jquery'], TGS_BOX_MGR_VERSION, true);
-        $loc['lotNonce'] = wp_create_nonce('tgs_lot_gen_nonce');
         wp_localize_script('tgs-box-detail', 'tgsBoxMgr', $loc);
     }
 });
