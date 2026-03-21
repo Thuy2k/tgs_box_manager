@@ -79,6 +79,8 @@
     function lotStatusBadge(status) {
         const map = {
             100: ['bg-label-warning', 'Trống'],
+            22: ['bg-label-secondary', 'Mới sinh'],
+            2: ['bg-label-warning', 'Chờ duyệt'],
             1: ['bg-label-success', 'Kho'],
             0: ['bg-label-dark', 'Đã bán'],
             '-1': ['bg-label-danger', 'Hư hỏng'],

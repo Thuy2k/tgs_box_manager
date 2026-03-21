@@ -643,7 +643,7 @@ class TGS_Box_Manager_Ajax
         // Nếu scan barcode → tìm lot
         if ($barcode && empty($lot_ids)) {
             $lot = $wpdb->get_row($wpdb->prepare(
-                "SELECT global_product_lot_id, global_box_manager_id
+                "SELECT global_product_lot_id, global_box_manager_id, local_product_lot_is_active
                  FROM {$lots}
                  WHERE global_product_lot_barcode = %s AND is_deleted = 0
                  LIMIT 1",
@@ -651,6 +651,9 @@ class TGS_Box_Manager_Ajax
             ));
 
             if (!$lot) self::json_err("Không tìm thấy mã định danh: {$barcode}");
+            if ((int) $lot->local_product_lot_is_active === 22) {
+                self::json_err("Mã {$barcode} là mã trống (chưa gắn SP), không thể thêm vào thùng.");
+            }
             if ($lot->global_box_manager_id && (int) $lot->global_box_manager_id !== $box_id) {
                 self::json_err("Mã {$barcode} đã thuộc thùng khác (box_id={$lot->global_box_manager_id}).");
             }
@@ -684,6 +687,16 @@ class TGS_Box_Manager_Ajax
 
             if (!$lot) { $skipped++; continue; }
             if ($lot->global_box_manager_id && (int) $lot->global_box_manager_id !== $box_id) {
+                $skipped++;
+                continue;
+            }
+
+            // Không cho thêm mã trống (status 22) chưa gắn SP vào thùng
+            $lot_status = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT local_product_lot_is_active FROM {$lots} WHERE global_product_lot_id = %d",
+                $lid
+            ));
+            if ($lot_status === 22) {
                 $skipped++;
                 continue;
             }
@@ -788,6 +801,7 @@ class TGS_Box_Manager_Ajax
                     ON pn.local_product_name_id = l.local_product_name_id
              WHERE l.is_deleted = 0
                AND (l.global_box_manager_id IS NULL OR l.global_box_manager_id = 0)
+               AND l.local_product_lot_is_active NOT IN (22)
                AND (l.global_product_lot_barcode LIKE %s
                     OR l.lot_code LIKE %s
                     OR pn.local_product_name LIKE %s
