@@ -49,7 +49,7 @@ add_filter('tgs_shop_dashboard_routes', function ($routes) {
 });
 
 // ── Sidebar Menu ─────────────────────────────────────────────────────────────
-add_action('tgs_shop_sidebar_menu', function ($current_view) {
+add_action('tgs_shop_advanced_menu', function ($current_view) {
     $views = ['box-create', 'box-list', 'box-detail'];
     $is_active = in_array($current_view, $views);
     $open = $is_active ? ' active open' : '';
