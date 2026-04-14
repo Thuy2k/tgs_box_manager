@@ -20,6 +20,25 @@ if (!defined('TGS_TABLE_GLOBAL_BOX_MANAGER')) {
     define('TGS_TABLE_GLOBAL_BOX_MANAGER', 'wp_global_box_manager');
 }
 
+// ── Activation: đảm bảo index trên bảng lots ────────────────────────────────
+register_activation_hook(__FILE__, function () {
+    global $wpdb;
+    $lots = defined('TGS_TABLE_GLOBAL_PRODUCT_LOTS')
+        ? TGS_TABLE_GLOBAL_PRODUCT_LOTS
+        : 'wp_global_product_lots';
+
+    // Index cho truy vấn: WHERE global_box_manager_id = ? AND is_deleted = 0
+    $exists = $wpdb->get_var(
+        "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = '{$lots}'
+           AND INDEX_NAME = 'idx_box_manager_id'"
+    );
+    if (!$exists) {
+        $wpdb->query("ALTER TABLE {$lots} ADD INDEX idx_box_manager_id (global_box_manager_id, is_deleted)");
+    }
+});
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 function tgs_box_mgr_init()
 {
