@@ -299,6 +299,126 @@
     vertical-align: -2px;
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   Camera Scan Modal (mobile-optimized)
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Modal z-index + self-drawn backdrop (bypass Sneat layout-wrapper stacking context) */
+#modalBoxCameraScan { z-index: 1060 !important; }
+#modalBoxCameraScan.show { background: rgba(0, 0, 0, 0.5) !important; }
+
+.box-scan-header {
+    background: linear-gradient(135deg, #696cff 0%, #5b5eea 100%);
+    color: #fff;
+    border-bottom: none;
+}
+.box-scan-header .btn-close-white {
+    filter: brightness(0) invert(1);
+    opacity: 0.8;
+}
+
+.box-scan-info {
+    background: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.box-scan-qty-bar {
+    background: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+    font-size: 13px;
+}
+
+/* Camera preview container */
+.box-scan-camera-preview {
+    position: relative;
+    width: 100%;
+    min-height: 220px;
+    max-height: 300px;
+    background: #f1f5f9;
+    overflow: hidden;
+}
+
+/* Dark BG only when camera is active */
+.box-scan-camera-preview.camera-active {
+    background: #0f172a;
+}
+
+.box-scan-camera-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 220px;
+    color: #64748b;
+}
+
+.box-scan-cam-controls {
+    background: #f1f5f9;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+/* Cooldown bar */
+.box-scan-cooldown {
+    padding-top: 4px;
+}
+
+/* Scanned list table */
+.box-scan-table-wrap {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+}
+.box-scan-table-wrap table { margin-bottom: 0; }
+.box-scan-table-wrap thead { position: sticky; top: 0; z-index: 2; }
+
+.box-scan-row-error {
+    background-color: #fef2f2 !important;
+}
+.box-scan-row-error td {
+    background-color: transparent !important;
+}
+
+.box-scan-footer {
+    background: #f8f9fa;
+    border-top: 1px solid #e9ecef;
+}
+
+/* ── Mobile fullscreen mode ────────────────────────────────────── */
+@media (max-width: 768px) {
+    #modalBoxCameraScan {
+        padding: 0 !important;
+    }
+    .box-scan-modal-dialog {
+        width: 100% !important;
+        height: 100% !important;
+        margin: 0 !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
+    }
+    .box-scan-modal-content {
+        width: 100% !important;
+        height: 100% !important;
+        border: none !important;
+        border-radius: 0 !important;
+    }
+    .box-scan-body {
+        overflow-y: auto;
+        flex: 1;
+    }
+    .box-scan-camera-preview {
+        min-height: 200px;
+        max-height: 260px;
+    }
+    .box-scan-table-wrap {
+        max-height: 160px;
+    }
+    /* Hide desktop-only elements on mobile scan mode */
+    .box-scan-modal-dialog .box-scan-info .badge {
+        font-size: 11px;
+    }
+}
+
 /* ── Scan input pulse khi đang xử lý ────────────────────────────── */
 #scanBarcodeInput:disabled {
     animation: pulse 0.6s ease infinite;

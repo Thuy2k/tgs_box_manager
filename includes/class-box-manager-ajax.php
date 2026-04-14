@@ -34,6 +34,7 @@ class TGS_Box_Manager_Ajax
             'tgs_box_add_items',
             'tgs_box_remove_items',
             'tgs_box_search_available_lots',
+            'tgs_box_validate_barcode',
 
             // ── D. Trạng thái & In ──
             'tgs_box_update_status',
@@ -825,6 +826,78 @@ class TGS_Box_Manager_Ajax
         }
 
         self::json_ok(['items' => $items, 'count' => count($items)]);
+    }
+
+    /**
+     * Validate barcode trước khi thêm (dùng cho camera scan modal)
+     * Không gán vào thùng, chỉ trả về thông tin + trạng thái hợp lệ
+     *
+     * POST: box_id, barcode
+     */
+    public static function tgs_box_validate_barcode()
+    {
+        self::verify();
+        global $wpdb;
+
+        $box_id  = intval($_POST['box_id'] ?? 0);
+        $barcode = sanitize_text_field($_POST['barcode'] ?? '');
+
+        if (!$box_id) self::json_err('Thiếu box_id.');
+        if (!$barcode) self::json_err('Thiếu barcode.');
+
+        $table = self::box_table();
+        $lots  = self::lots_table();
+
+        // Kiểm tra thùng
+        $box = $wpdb->get_row($wpdb->prepare(
+            "SELECT box_id, box_capacity, box_actual_qty FROM {$table} WHERE box_id = %d AND is_deleted = 0",
+            $box_id
+        ));
+        if (!$box) self::json_err('Thùng không tồn tại.');
+
+        // Tìm lot theo barcode
+        $lot = $wpdb->get_row($wpdb->prepare(
+            "SELECT l.global_product_lot_id, l.global_product_lot_barcode,
+                    l.global_box_manager_id, l.local_product_lot_is_active,
+                    l.lot_code, l.exp_date,
+                    pn.local_product_name, pn.local_product_sku
+             FROM {$lots} l
+             LEFT JOIN {$wpdb->prefix}local_product_name pn
+                    ON pn.local_product_name_id = l.local_product_name_id
+             WHERE l.global_product_lot_barcode = %s AND l.is_deleted = 0
+             LIMIT 1",
+            $barcode
+        ));
+
+        if (!$lot) {
+            self::json_err("Không tìm thấy mã: {$barcode}");
+        }
+
+        $status = (int) $lot->local_product_lot_is_active;
+
+        if ($status === 22) {
+            self::json_err("Mã {$barcode} là mã trống (chưa gắn SP).");
+        }
+
+        if ($lot->global_box_manager_id && (int) $lot->global_box_manager_id === $box_id) {
+            self::json_err("Mã {$barcode} đã có trong thùng này rồi.");
+        }
+
+        if ($lot->global_box_manager_id && (int) $lot->global_box_manager_id !== $box_id) {
+            self::json_err("Mã {$barcode} đã thuộc thùng khác (box_id={$lot->global_box_manager_id}).");
+        }
+
+        self::json_ok([
+            'lot_id'       => (int) $lot->global_product_lot_id,
+            'barcode'      => $lot->global_product_lot_barcode,
+            'product_name' => $lot->local_product_name ?: '-',
+            'product_sku'  => $lot->local_product_sku ?: '-',
+            'lot_code'     => $lot->lot_code ?: '-',
+            'exp_date'     => $lot->exp_date,
+            'status'       => $status,
+            'box_capacity' => (int) $box->box_capacity,
+            'box_actual_qty' => (int) $box->box_actual_qty,
+        ], 'Hợp lệ');
     }
 
     /* =========================================================================

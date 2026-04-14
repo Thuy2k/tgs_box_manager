@@ -122,7 +122,19 @@ add_action('admin_enqueue_scripts', function () {
         wp_localize_script('tgs-box-list', 'tgsBoxMgr', $loc);
     }
     if ($view === 'box-detail') {
-        wp_enqueue_script('tgs-box-detail', TGS_BOX_MGR_URL . 'assets/js/box-detail.js', ['jquery'], TGS_BOX_MGR_VERSION, true);
+        // Scanner dependencies (reuse from tgs_shop_management)
+        if (!wp_script_is('zxing-library', 'registered')) {
+            wp_register_script('zxing-library', 'https://unpkg.com/@zxing/library@0.21.3', [], null, true);
+        }
+        wp_enqueue_script('zxing-library');
+
+        $scanner_url = plugins_url('tgs_shop_management/assets/js/common/tgs-barcode-scanner.js');
+        if (!wp_script_is('tgs-barcode-scanner', 'registered')) {
+            wp_register_script('tgs-barcode-scanner', $scanner_url, ['zxing-library'], TGS_BOX_MGR_VERSION, true);
+        }
+        wp_enqueue_script('tgs-barcode-scanner');
+
+        wp_enqueue_script('tgs-box-detail', TGS_BOX_MGR_URL . 'assets/js/box-detail.js', ['jquery', 'tgs-barcode-scanner'], TGS_BOX_MGR_VERSION, true);
         wp_localize_script('tgs-box-detail', 'tgsBoxMgr', $loc);
     }
 });

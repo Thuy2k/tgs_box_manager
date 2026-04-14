@@ -524,6 +524,390 @@
 
         window.open(url, '_blank', 'width=800,height=600');
     });
+    /* ── Camera Scan Modal (Mobile-optimized) ─────────────────────── */
+
+    let boxScanner = null;
+    let scannerCooldown = false;
+    let scannedItems = [];        // [{ barcode, lot_id, product_name, product_sku, status, valid }]
+    let cameraActive = false;
+    let boxCapacity = 0;          // 0 = vô hạn
+    let boxCurrentQty = 0;
+
+    // Open modal
+    $('#btnOpenCameraScan').on('click', function () {
+        const $modal = $('#modalBoxCameraScan');
+        if (!$modal.hasClass('show')) {
+            new bootstrap.Modal($modal[0]).show();
+        }
+    });
+
+    $('#btnBoxScanOpenCam').on('click', function () {
+        const $modal = $('#modalBoxCameraScan');
+        if ($modal.hasClass('show')) {
+            startBoxCamera();
+        } else {
+            new bootstrap.Modal($modal[0]).show();
+        }
+    });
+
+    // Close modal when clicking on self-drawn backdrop (outside dialog)
+    $(document).on('click', '#modalBoxCameraScan', function (e) {
+        if (e.target === this) {
+            const inst = bootstrap.Modal.getInstance(this);
+            if (inst) inst.hide();
+        }
+    });
+
+    $(document).on('shown.bs.modal', '#modalBoxCameraScan', function () {
+        // Fill box info from current loaded data
+        const boxInfo = getBoxInfo();
+        boxCapacity = boxInfo.capacity;
+        boxCurrentQty = boxInfo.actualQty;
+
+        $('#scanBoxProduct').text(boxInfo.productName || 'Chưa chỉ định SP');
+        $('#scanBoxSku').text(boxInfo.sku ? 'SKU: ' + boxInfo.sku : '');
+        updateScanQtyDisplay();
+
+        // Auto-open camera on mobile
+        if (window.innerWidth <= 768) {
+            setTimeout(function () { startBoxCamera(); }, 400);
+        }
+
+        // Focus input
+        $('#boxScanManualInput').focus();
+    });
+
+    // On modal hide → stop camera
+    $(document).on('hidden.bs.modal', '#modalBoxCameraScan', function () {
+        stopBoxCamera();
+        // If items were confirmed, reload detail
+        if (scannedItems.length === 0) {
+            // nothing to do
+        }
+    });
+
+    function getBoxInfo() {
+        // Extract from currently rendered detail
+        const qtyText = $('#infoQty').text(); // e.g. "5 / 10" or "0 / ∞"
+        const parts = qtyText.split('/').map(s => s.trim());
+        const actualQty = parseInt(parts[0]) || 0;
+        const cap = parts[1] === '∞' ? 0 : (parseInt(parts[1]) || 0);
+        return {
+            capacity: cap,
+            actualQty: actualQty,
+            productName: $('#infoSku').text(),
+            sku: '',
+        };
+    }
+
+    function updateScanQtyDisplay() {
+        const pendingValid = scannedItems.filter(i => i.valid).length;
+        const total = boxCurrentQty + pendingValid;
+        $('#scanCurrentQty').text(total);
+        $('#scanCapacity').text(boxCapacity > 0 ? boxCapacity : '∞');
+
+        if (boxCapacity > 0) {
+            const remaining = Math.max(0, boxCapacity - total);
+            $('#scanRemaining').text(remaining).toggleClass('text-danger', remaining === 0).toggleClass('text-success', remaining > 0);
+        } else {
+            $('#scanRemaining').text('∞');
+        }
+    }
+
+    function startBoxCamera() {
+        if (cameraActive) return;
+
+        // Check if TGSBarcodeScanner is available
+        if (typeof TGSBarcodeScanner === 'undefined') {
+            showScanAlert('Thư viện quét mã chưa được tải. Vui lòng tải lại trang.');
+            return;
+        }
+
+        boxScanner = new TGSBarcodeScanner({
+            containerId: 'boxScanCameraPreview',
+            onSuccess: function (result) {
+                onCameraScan(result.text);
+            },
+            onError: function (err) {
+                // Camera failed → clean up preview, show placeholder
+                cameraActive = false;
+                showScanAlert('Không thể mở camera. ' + (err || 'Vui lòng cấp quyền camera hoặc dùng HTTPS.'));
+                $('#boxScanCameraPreview').removeClass('camera-active').html(
+                    '<div class="box-scan-camera-placeholder">'
+                    + '<i class="bx bx-error" style="font-size:48px; color:#dc2626; opacity:0.5;"></i>'
+                    + '<div class="text-muted mt-2" style="font-size:13px;">Camera không khả dụng</div>'
+                    + '<div class="text-muted" style="font-size:11px;">Dùng ô nhập liệu bên dưới để quét/nhập mã</div>'
+                    + '</div>'
+                );
+                $('#boxScanCamStatus').html('<i class="bx bx-error me-1 text-danger"></i>Camera lỗi');
+                $('#btnToggleCamera').html('<i class="bx bx-video me-1"></i>Thử lại camera').removeClass('btn-outline-secondary').addClass('btn-outline-primary');
+            },
+            onStatusChange: function (status, msg) {
+                const $s = $('#boxScanCamStatus');
+                if (status === 'scanning') {
+                    $s.html('<i class="bx bx-radio-circle-marked me-1 text-success"></i>Đang quét…');
+                } else if (status === 'starting') {
+                    $s.html('<i class="bx bx-loader-alt bx-spin me-1"></i>' + msg);
+                } else if (status === 'error') {
+                    $s.html('<i class="bx bx-error me-1 text-danger"></i>' + msg);
+                } else {
+                    $s.html('<i class="bx bx-info-circle me-1"></i>' + msg);
+                }
+            }
+        });
+
+        boxScanner.start();
+        cameraActive = true;
+        $('#boxScanCameraPreview').addClass('camera-active');
+        $('#btnToggleCamera').html('<i class="bx bx-video-off me-1"></i>Tắt camera').removeClass('btn-outline-primary').addClass('btn-outline-secondary');
+    }
+
+    function stopBoxCamera() {
+        if (boxScanner) {
+            boxScanner.stop();
+            boxScanner = null;
+        }
+        cameraActive = false;
+        $('#boxScanCameraPreview').removeClass('camera-active').html('<div class="box-scan-camera-placeholder"><i class="bx bx-camera" style="font-size:48px; opacity:0.3;"></i><div class="text-muted mt-2" style="font-size:13px;">Camera đã tắt</div></div>');
+        $('#boxScanCamStatus').html('<i class="bx bx-info-circle me-1"></i>Camera tắt');
+        $('#btnToggleCamera').html('<i class="bx bx-video me-1"></i>Bật camera').removeClass('btn-outline-secondary').addClass('btn-outline-primary');
+    }
+
+    // Toggle camera
+    $('#btnToggleCamera').on('click', function () {
+        if (cameraActive) {
+            stopBoxCamera();
+        } else {
+            startBoxCamera();
+        }
+    });
+
+    // Camera scan callback with cooldown
+    function onCameraScan(barcode) {
+        if (scannerCooldown || !barcode) return;
+
+        // Pause scanning during cooldown
+        scannerCooldown = true;
+        if (boxScanner) boxScanner.isScanning = false;
+
+        // Show cooldown
+        let countdown = 1.5;
+        $('#boxScanCooldown').show();
+        $('#boxScanCooldownText').text('Đã quét: ' + barcode + ' — tiếp tục sau ' + countdown.toFixed(1) + 's…');
+
+        const cdInterval = setInterval(function () {
+            countdown -= 0.1;
+            if (countdown <= 0) {
+                clearInterval(cdInterval);
+                scannerCooldown = false;
+                if (boxScanner) boxScanner.isScanning = true;
+                // Restart native scan loop if needed
+                if (boxScanner && boxScanner.detector && !boxScanner.isIOS) {
+                    boxScanner.scanNativeLoop();
+                }
+                $('#boxScanCooldown').hide();
+            } else {
+                $('#boxScanCooldownText').text('Đã quét: ' + barcode + ' — tiếp tục sau ' + countdown.toFixed(1) + 's…');
+            }
+        }, 100);
+
+        // Process the scanned barcode
+        processScannedBarcode(barcode);
+    }
+
+    // Process: validate via AJAX, add to list
+    function processScannedBarcode(barcode) {
+        // Check duplicate in pending list
+        if (scannedItems.some(i => i.barcode === barcode)) {
+            showScanAlert('Mã "' + barcode + '" đã có trong danh sách quét rồi.');
+            return;
+        }
+
+        // Check capacity
+        if (boxCapacity > 0) {
+            const pendingValid = scannedItems.filter(i => i.valid).length;
+            if (boxCurrentQty + pendingValid >= boxCapacity) {
+                showScanAlert('Thùng đã đầy! Sức chứa: ' + boxCapacity);
+                return;
+            }
+        }
+
+        // AJAX validate
+        $.post(C.ajaxUrl, {
+            action: 'tgs_box_validate_barcode',
+            nonce: C.nonce,
+            box_id: boxId,
+            barcode: barcode,
+        }, function (res) {
+            if (!res.success) {
+                showScanAlert(res.data?.message || 'Mã không hợp lệ');
+                // Still add to list but mark as invalid for visibility
+                scannedItems.push({
+                    barcode: barcode,
+                    lot_id: null,
+                    product_name: '-',
+                    product_sku: '-',
+                    status: 'error',
+                    statusMsg: res.data?.message || 'Không hợp lệ',
+                    valid: false,
+                });
+                renderScanList();
+                return;
+            }
+
+            hideScanAlert();
+            const d = res.data;
+            scannedItems.push({
+                barcode: barcode,
+                lot_id: d.lot_id,
+                product_name: d.product_name,
+                product_sku: d.product_sku,
+                status: 'ok',
+                statusMsg: 'Hợp lệ',
+                valid: true,
+            });
+            renderScanList();
+            updateScanQtyDisplay();
+        }).fail(function () {
+            showScanAlert('Lỗi kết nối khi kiểm tra mã: ' + barcode);
+        });
+    }
+
+    // Manual input
+    $('#boxScanManualInput').on('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const val = $(this).val().trim();
+            if (val) {
+                processScannedBarcode(val);
+                $(this).val('').focus();
+            }
+        }
+    });
+
+    let manualScanTimer = null;
+    $('#boxScanManualInput').on('input', function () {
+        clearTimeout(manualScanTimer);
+        const val = $(this).val().trim();
+        if (val.length >= 5) {
+            manualScanTimer = setTimeout(() => {
+                processScannedBarcode(val);
+                $('#boxScanManualInput').val('').focus();
+            }, 200);
+        }
+    });
+
+    $('#btnBoxScanManualAdd').on('click', function () {
+        const val = $('#boxScanManualInput').val().trim();
+        if (val) {
+            processScannedBarcode(val);
+            $('#boxScanManualInput').val('').focus();
+        }
+    });
+
+    // Render scanned list
+    function renderScanList() {
+        const $body = $('#boxScanListBody');
+        const validCount = scannedItems.filter(i => i.valid).length;
+
+        $('#scanListCount').text(scannedItems.length);
+        $('#scanConfirmCount').text(validCount);
+        $('#btnScanConfirm').prop('disabled', validCount === 0);
+        $('#btnScanClearAll').toggle(scannedItems.length > 0);
+
+        if (!scannedItems.length) {
+            $body.html('<tr><td colspan="4" class="text-center text-muted py-3">Chưa quét mã nào</td></tr>');
+            return;
+        }
+
+        let html = '';
+        scannedItems.forEach(function (item, idx) {
+            const statusClass = item.valid ? 'text-success' : 'text-danger';
+            const statusIcon = item.valid ? 'bx-check-circle' : 'bx-x-circle';
+
+            html += '<tr class="box-scan-row ' + (item.valid ? '' : 'box-scan-row-error') + '" data-idx="' + idx + '">'
+                + '<td>' + (idx + 1) + '</td>'
+                + '<td><code style="font-size:11px;">' + item.barcode + '</code>'
+                + (item.valid ? '<div style="font-size:10px; color:#888;">' + item.product_name + '</div>' : '')
+                + '</td>'
+                + '<td class="' + statusClass + '" style="font-size:11px;" title="' + item.statusMsg + '"><i class="bx ' + statusIcon + '"></i></td>'
+                + '<td><button class="btn btn-sm btn-link text-danger p-0 btn-scan-remove" data-idx="' + idx + '"><i class="bx bx-x"></i></button></td>'
+                + '</tr>';
+        });
+
+        $body.html(html);
+    }
+
+    // Remove from scanned list
+    $(document).on('click', '.btn-scan-remove', function (e) {
+        e.stopPropagation();
+        const idx = parseInt($(this).data('idx'));
+        scannedItems.splice(idx, 1);
+        renderScanList();
+        updateScanQtyDisplay();
+    });
+
+    // Clear all
+    $('#btnScanClearAll').on('click', function () {
+        scannedItems = [];
+        renderScanList();
+        updateScanQtyDisplay();
+        hideScanAlert();
+    });
+
+    // Alert helpers
+    function showScanAlert(msg) {
+        $('#boxScanAlertMsg').text(msg);
+        $('#boxScanAlert').show();
+        clearTimeout($('#boxScanAlert').data('timer'));
+        $('#boxScanAlert').data('timer', setTimeout(function () { $('#boxScanAlert').hide(); }, 6000));
+    }
+
+    function hideScanAlert() {
+        $('#boxScanAlert').hide();
+    }
+
+    // Confirm → batch add to box
+    $('#btnScanConfirm').on('click', function () {
+        const validItems = scannedItems.filter(i => i.valid);
+        if (!validItems.length) return;
+
+        const lotIds = validItems.map(i => i.lot_id);
+        const $btn = $(this);
+        $btn.prop('disabled', true).html('<i class="bx bx-loader-alt bx-spin me-1"></i>Đang gán…');
+
+        $.post(C.ajaxUrl, {
+            action: 'tgs_box_add_items',
+            nonce: C.nonce,
+            box_id: boxId,
+            lot_ids: lotIds,
+        }, function (res) {
+            $btn.prop('disabled', false).html('<i class="bx bx-check me-1"></i>Xác nhận gán <span id="scanConfirmCount">0</span> mã');
+
+            if (!res.success) {
+                showScanAlert(res.data?.message || 'Lỗi khi gán mã vào thùng');
+                return;
+            }
+
+            showToast('✅ ' + res.data.message, 'success');
+
+            // Clear scanned list
+            scannedItems = [];
+            renderScanList();
+
+            // Close modal
+            const $modal = $('#modalBoxCameraScan');
+            const bsModal = bootstrap.Modal.getInstance($modal[0]);
+            if (bsModal) bsModal.hide();
+
+            // Reload detail
+            loadDetail();
+        }).fail(function (xhr) {
+            $btn.prop('disabled', false).html('<i class="bx bx-check me-1"></i>Xác nhận gán <span id="scanConfirmCount">' + validItems.length + '</span> mã');
+            showScanAlert(xhr.responseJSON?.data?.message || 'Lỗi kết nối server.');
+        });
+    });
+
     /* ── Delete Box ──────────────────────────────────────────────── */
 
     $('#btnDeleteBox').on('click', function () {

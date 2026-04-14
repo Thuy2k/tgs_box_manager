@@ -165,7 +165,12 @@ $box_id = intval($_GET['box_id'] ?? 0);
     <!-- Thêm mã vào thùng -->
     <div class="card mb-3">
         <div class="card-header">
-            <h6 class="mb-0"><i class="bx bx-scan me-1"></i>Thêm mã định danh vào thùng</h6>
+            <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="bx bx-scan me-1"></i>Thêm mã định danh vào thùng</h6>
+                <button class="btn btn-sm btn-primary" id="btnOpenCameraScan" type="button">
+                    <i class="bx bx-camera me-1"></i>Quét camera
+                </button>
+            </div>
         </div>
         <div class="card-body">
             <div class="row g-2 align-items-end">
@@ -258,6 +263,128 @@ $box_id = intval($_GET['box_id'] ?? 0);
                     <tr><td colspan="9" class="text-center py-4 text-muted">Đang tải...</td></tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     MODAL: Quét camera mã định danh (tối ưu mobile)
+     ═══════════════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="modalBoxCameraScan" tabindex="-1" data-bs-backdrop="false" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-scrollable box-scan-modal-dialog">
+        <div class="modal-content box-scan-modal-content">
+            <!-- Header -->
+            <div class="modal-header box-scan-header py-2">
+                <h6 class="modal-title fw-bold mb-0">
+                    <i class="bx bx-scan me-1"></i>Quét mã định danh mới vào
+                </h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body p-0 box-scan-body">
+                <!-- Box info badges -->
+                <div class="box-scan-info px-3 py-2">
+                    <span class="badge bg-label-primary me-1" id="scanBoxProduct">-</span>
+                    <span class="badge bg-label-secondary" id="scanBoxSku">-</span>
+                </div>
+                <div class="box-scan-qty-bar px-3 pb-2">
+                    <span class="text-muted" style="font-size:12px;">Hiện có:</span>
+                    <strong id="scanCurrentQty">0</strong> / <strong id="scanCapacity">∞</strong>
+                    <span class="ms-2 text-muted" style="font-size:12px;">Có thể thêm:</span>
+                    <strong class="text-success" id="scanRemaining">∞</strong>
+                </div>
+
+                <!-- Camera preview -->
+                <div id="boxScanCameraPreview" class="box-scan-camera-preview">
+                    <div class="box-scan-camera-placeholder">
+                        <i class="bx bx-camera" style="font-size:48px; opacity:0.3;"></i>
+                        <div class="text-muted mt-2" style="font-size:13px;">Bấm "Chụp ảnh" hoặc mở camera bên dưới</div>
+                    </div>
+                </div>
+
+                <!-- Camera status + toggle -->
+                <div class="box-scan-cam-controls px-3 py-2 d-flex align-items-center gap-2">
+                    <span id="boxScanCamStatus" class="text-muted" style="font-size:12px;">
+                        <i class="bx bx-info-circle me-1"></i>Camera tắt
+                    </span>
+                    <button class="btn btn-sm btn-outline-secondary ms-auto" id="btnToggleCamera" type="button">
+                        <i class="bx bx-video-off me-1"></i>Tắt camera
+                    </button>
+                </div>
+
+                <!-- Scan cooldown status -->
+                <div id="boxScanCooldown" class="box-scan-cooldown px-3" style="display:none;">
+                    <div class="alert alert-success py-1 px-3 mb-0" style="font-size:12px;">
+                        <i class="bx bx-check-circle me-1"></i>
+                        <span id="boxScanCooldownText">Đã quét — tiếp tục sau 1.5s…</span>
+                    </div>
+                </div>
+
+                <!-- Manual barcode input -->
+                <div class="px-3 py-2">
+                    <label class="form-label mb-1" style="font-size:12px;">Quét hoặc nhập mã định danh</label>
+                    <div class="input-group input-group-sm">
+                        <input type="text" id="boxScanManualInput" class="form-control" placeholder="Quét hoặc nhập mã định da…" autocomplete="off" />
+                        <button class="btn btn-primary" id="btnBoxScanManualAdd" type="button">
+                            <i class="bx bx-plus me-1"></i>Thêm
+                        </button>
+                        <button class="btn btn-outline-secondary" id="btnBoxScanOpenCam" type="button" title="Bật camera">
+                            <i class="bx bx-camera"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Error/Warning banner -->
+                <div id="boxScanAlert" class="px-3" style="display:none;">
+                    <div class="alert alert-danger py-1 px-3 mb-2" style="font-size:12px;">
+                        <i class="bx bx-error-circle me-1"></i><span id="boxScanAlertMsg"></span>
+                    </div>
+                </div>
+
+                <!-- Scanned list -->
+                <div class="px-3 pt-1 pb-2">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span style="font-size:12px; font-weight:600;">
+                            Đã quét: <span class="badge bg-primary" id="scanListCount">0</span> mã
+                        </span>
+                        <button class="btn btn-sm btn-outline-danger" id="btnScanClearAll" type="button" style="font-size:11px; display:none;">
+                            <i class="bx bx-trash me-1"></i>Xóa hết
+                        </button>
+                    </div>
+                    <div class="table-responsive box-scan-table-wrap">
+                        <table class="table table-sm table-bordered mb-0" style="font-size:12px;">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:30px;">#</th>
+                                    <th>Barcode</th>
+                                    <th style="width:70px;">Trạng thái</th>
+                                    <th style="width:40px;">Xoá</th>
+                                </tr>
+                            </thead>
+                            <tbody id="boxScanListBody">
+                                <tr><td colspan="4" class="text-center text-muted py-3">Chưa quét mã nào</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Info note -->
+                <div class="px-3 pb-2">
+                    <div class="alert alert-info py-1 px-3 mb-0" style="font-size:11px;">
+                        <i class="bx bx-info-circle me-1"></i>
+                        Chỉ chấp nhận mã có trạng thái hợp lệ (không phải mã trống 22).<br>
+                        Mã đã thuộc thùng khác sẽ bị từ chối.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="modal-footer box-scan-footer py-2">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Hủy</button>
+                <button type="button" class="btn btn-success" id="btnScanConfirm" disabled>
+                    <i class="bx bx-check me-1"></i>Xác nhận gán <span id="scanConfirmCount">0</span> mã
+                </button>
+            </div>
         </div>
     </div>
 </div>
