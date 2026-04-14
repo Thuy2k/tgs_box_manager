@@ -18,8 +18,7 @@ if (!defined('ABSPATH')) exit;
 $box_id = intval($_GET['box_id'] ?? 0);
 ?>
 
-<div class="container-xxl flex-grow-1 container-p-y">
-    <!-- Header -->
+<!-- Header -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h4 class="fw-bold mb-0">
             <i class="bx bx-detail me-2"></i>Chi tiết thùng hàng
@@ -265,7 +264,6 @@ $box_id = intval($_GET['box_id'] ?? 0);
             </table>
         </div>
     </div>
-</div>
 
 <!-- ═══════════════════════════════════════════════════════════════════
      MODAL: Quét camera mã định danh (tối ưu mobile)

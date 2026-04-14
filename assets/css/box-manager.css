@@ -304,7 +304,7 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 /* Modal z-index + self-drawn backdrop (bypass Sneat layout-wrapper stacking context) */
-#modalBoxCameraScan { z-index: 1060 !important; }
+#modalBoxCameraScan { z-index: 1055 !important; }
 #modalBoxCameraScan.show { background: rgba(0, 0, 0, 0.5) !important; }
 
 .box-scan-header {

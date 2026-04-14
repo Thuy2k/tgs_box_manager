@@ -8,8 +8,7 @@
 if (!defined('ABSPATH')) exit;
 ?>
 
-<div class="container-xxl flex-grow-1 container-p-y">
-    <!-- Header -->
+<!-- Header -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h4 class="fw-bold mb-0">
             <i class="bx bx-package me-2"></i>Danh sách thùng hàng
@@ -83,4 +82,3 @@ if (!defined('ABSPATH')) exit;
             </div>
         </div>
     </div>
-</div>

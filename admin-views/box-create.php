@@ -14,8 +14,7 @@
 if (!defined('ABSPATH')) exit;
 ?>
 
-<div class="container-xxl flex-grow-1 container-p-y">
-    <!-- Header -->
+<!-- Header -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h4 class="fw-bold mb-1">
@@ -135,4 +134,3 @@ if (!defined('ABSPATH')) exit;
             </table>
         </div>
     </div>
-</div>
