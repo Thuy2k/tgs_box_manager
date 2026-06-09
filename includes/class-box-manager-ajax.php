@@ -84,6 +84,24 @@ class TGS_Box_Manager_Ajax
         return defined('TGS_TABLE_GLOBAL_PRODUCT_LOTS') ? TGS_TABLE_GLOBAL_PRODUCT_LOTS : 'wp_global_product_lots';
     }
 
+    private static function product_table()
+    {
+        global $wpdb;
+        return defined('TGS_TABLE_GLOBAL_PRODUCT_NAME') ? TGS_TABLE_GLOBAL_PRODUCT_NAME : $wpdb->base_prefix . 'global_product_name';
+    }
+
+    private static function ensure_global_product_source(): bool
+    {
+        if (!class_exists('TGS_Global_Product_Source')) {
+            $source_file = WP_PLUGIN_DIR . '/tgs_shop_management/functions/class-tgs-global-product-source.php';
+            if (is_readable($source_file)) {
+                require_once $source_file;
+            }
+        }
+
+        return class_exists('TGS_Global_Product_Source');
+    }
+
     /**
      * Tính check digit EAN-13
      */
@@ -349,7 +367,7 @@ class TGS_Box_Manager_Ajax
      * ========================================================================= */
 
     /**
-     * Tìm sản phẩm local theo tên / SKU / barcode
+     * Tìm sản phẩm global theo tên / SKU / barcode.
      *
      * POST: search (keyword)
      * Response: products[] { id, name, sku, barcode, thumbnail }
@@ -357,8 +375,6 @@ class TGS_Box_Manager_Ajax
     public static function tgs_box_search_products()
     {
         self::verify();
-        global $wpdb;
-
         $keyword = sanitize_text_field($_POST['search'] ?? '');
         $blog_id = intval($_POST['blog_id'] ?? get_current_blog_id());
 
@@ -367,36 +383,34 @@ class TGS_Box_Manager_Ajax
             return;
         }
 
-        $table = defined('TGS_TABLE_LOCAL_PRODUCT_NAME')
-            ? TGS_TABLE_LOCAL_PRODUCT_NAME
-            : $wpdb->prefix . 'local_product_name';
+        if (!self::ensure_global_product_source()) {
+            self::json_ok(['products' => []]);
+            return;
+        }
 
-        $like = '%' . $wpdb->esc_like($keyword) . '%';
+        $result = TGS_Global_Product_Source::query_products([
+            'search' => $keyword,
+            'blog_id' => $blog_id,
+            'with_stock' => false,
+            'with_local_aliases' => true,
+            'require_sku' => true,
+            'status_filter' => 'all',
+            'order_by' => 'global_product_name',
+            'order_dir' => 'ASC',
+            'per_page' => 20,
+        ]);
 
-        $sql = $wpdb->prepare(
-            "SELECT local_product_name_id, local_product_name, local_product_barcode_main,
-                    local_product_sku, local_product_unit, local_product_thumbnail
-             FROM {$table}
-             WHERE is_deleted = 0
-               AND (local_product_name LIKE %s OR local_product_barcode_main LIKE %s OR local_product_sku LIKE %s)
-             ORDER BY local_product_name ASC
-             LIMIT 20",
-            $like, $like, $like
-        );
-
-        $rows = $wpdb->get_results($sql, ARRAY_A);
-
-        // Map sang field names đơn giản cho JS
+        // Map sang field names đơn giản cho JS, id vẫn là global_product_name_id.
         $products = array_map(function ($r) {
             return [
-                'id'        => $r['local_product_name_id'],
-                'name'      => $r['local_product_name'],
-                'sku'       => $r['local_product_sku'] ?? '',
-                'barcode'   => $r['local_product_barcode_main'] ?? '',
-                'unit'      => $r['local_product_unit'] ?? '',
-                'thumbnail' => $r['local_product_thumbnail'] ?? '',
+                'id'        => $r['global_product_name_id'] ?? $r['local_product_name_id'] ?? 0,
+                'name'      => $r['global_product_name'] ?? $r['local_product_name'] ?? '',
+                'sku'       => $r['global_product_sku'] ?? $r['local_product_sku'] ?? '',
+                'barcode'   => $r['global_product_barcode_main'] ?? $r['local_product_barcode_main'] ?? '',
+                'unit'      => $r['global_product_unit'] ?? $r['local_product_unit'] ?? '',
+                'thumbnail' => $r['global_product_thumbnail'] ?? $r['local_product_thumbnail'] ?? '',
             ];
-        }, $rows ?: []);
+        }, (array) ($result['items'] ?? []));
 
         self::json_ok(['products' => $products]);
     }
@@ -445,10 +459,10 @@ class TGS_Box_Manager_Ajax
         );
 
         // Data
-        $pn_table = $wpdb->prefix . 'local_product_name';
-        $data_sql = "SELECT b.*, pn.local_product_name AS product_name
+        $pn_table = self::product_table();
+        $data_sql = "SELECT b.*, pn.global_product_name AS product_name
                      FROM {$table} b
-                     LEFT JOIN {$pn_table} pn ON pn.local_product_name_id = b.local_product_name_id
+                     LEFT JOIN {$pn_table} pn ON pn.global_product_name_id = b.local_product_name_id
                      WHERE {$where} ORDER BY b.created_at DESC LIMIT %d OFFSET %d";
         $all_params = array_merge($params, [$per, $offset]);
         $rows = $wpdb->get_results($wpdb->prepare($data_sql, ...$all_params));
@@ -513,27 +527,26 @@ class TGS_Box_Manager_Ajax
             $box_id
         ));
 
-        // Lấy tên sản phẩm chính (nếu có local_product_name_id)
+        // Lấy tên sản phẩm chính từ catalog global (local_product_name_id là alias legacy cho global id).
         $product_name = '';
         if (!empty($box->local_product_name_id)) {
-            $pn_table = $wpdb->prefix . 'local_product_name';
+            $pn_table = self::product_table();
             $product_name = $wpdb->get_var($wpdb->prepare(
-                "SELECT local_product_name FROM {$pn_table} WHERE local_product_name_id = %d",
+                "SELECT global_product_name FROM {$pn_table} WHERE global_product_name_id = %d",
                 $box->local_product_name_id
             )) ?: '';
         }
 
         // Lấy danh sách lots bên trong
-        // Ghi chú: LEFT JOIN local_product_name dùng prefix blog hiện tại
-        // Hợp lệ vì thùng luôn thao tác trên blog tạo ra nó (source_blog_id)
+        $pn_table = self::product_table();
         $items = $wpdb->get_results($wpdb->prepare(
             "SELECT l.*,
-                    pn.local_product_name,
-                    pn.local_product_sku,
-                    pn.local_product_barcode_main
+                    pn.global_product_name AS product_name,
+                    COALESCE(NULLIF(l.local_product_sku, ''), pn.global_product_sku) AS product_sku,
+                    pn.global_product_barcode_main AS product_barcode
              FROM {$lots} l
-             LEFT JOIN {$wpdb->prefix}local_product_name pn
-                    ON pn.local_product_name_id = l.local_product_name_id
+             LEFT JOIN {$pn_table} pn
+                    ON pn.global_product_name_id = COALESCE(NULLIF(l.global_product_name_id, 0), l.local_product_name_id)
              WHERE l.global_box_manager_id = %d AND l.is_deleted = 0
              ORDER BY l.global_product_lot_id ASC",
             $box_id
@@ -572,8 +585,8 @@ class TGS_Box_Manager_Ajax
             $lot_list[] = [
                 'lot_id'       => $item->global_product_lot_id,
                 'barcode'      => $item->global_product_lot_barcode,
-                'product_name' => $item->local_product_name ?: '-',
-                'product_sku'  => $item->local_product_sku ?: '-',
+                'product_name' => $item->product_name ?: '-',
+                'product_sku'  => $item->product_sku ?: '-',
                 'lot_code'     => $item->lot_code ?: '-',
                 'exp_date'     => $item->exp_date,
                 'variant'      => !empty($variant_map[$lid]) ? implode(', ', $variant_map[$lid]) : '-',
@@ -786,8 +799,7 @@ class TGS_Box_Manager_Ajax
         $lots = self::lots_table();
         $like = '%' . $wpdb->esc_like($search) . '%';
 
-        // JOIN local_product_name từ blog hiện tại
-        // Thùng luôn thao tác trên blog tạo ra nó nên prefix đúng
+        $pn_table = self::product_table();
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT l.global_product_lot_id,
                     l.global_product_lot_barcode,
@@ -795,21 +807,22 @@ class TGS_Box_Manager_Ajax
                     l.exp_date,
                     l.local_product_name_id,
                     l.local_product_lot_is_active,
-                    pn.local_product_name,
-                    pn.local_product_sku
+                    pn.global_product_name AS product_name,
+                    COALESCE(NULLIF(l.local_product_sku, ''), pn.global_product_sku) AS product_sku
              FROM {$lots} l
-             LEFT JOIN {$wpdb->prefix}local_product_name pn
-                    ON pn.local_product_name_id = l.local_product_name_id
+             LEFT JOIN {$pn_table} pn
+                    ON pn.global_product_name_id = COALESCE(NULLIF(l.global_product_name_id, 0), l.local_product_name_id)
              WHERE l.is_deleted = 0
                AND (l.global_box_manager_id IS NULL OR l.global_box_manager_id = 0)
                AND l.local_product_lot_is_active NOT IN (22)
                AND (l.global_product_lot_barcode LIKE %s
                     OR l.lot_code LIKE %s
-                    OR pn.local_product_name LIKE %s
-                    OR pn.local_product_sku LIKE %s)
+                    OR pn.global_product_name LIKE %s
+                    OR pn.global_product_sku LIKE %s
+                    OR l.local_product_sku LIKE %s)
              ORDER BY l.global_product_lot_id DESC
              LIMIT %d",
-            $like, $like, $like, $like, $limit
+            $like, $like, $like, $like, $like, $limit
         ));
 
         $items = [];
@@ -817,8 +830,8 @@ class TGS_Box_Manager_Ajax
             $items[] = [
                 'lot_id'       => $r->global_product_lot_id,
                 'barcode'      => $r->global_product_lot_barcode,
-                'product_name' => $r->local_product_name ?: '-',
-                'product_sku'  => $r->local_product_sku ?: '-',
+                'product_name' => $r->product_name ?: '-',
+                'product_sku'  => $r->product_sku ?: '-',
                 'lot_code'     => $r->lot_code ?: '-',
                 'exp_date'     => $r->exp_date,
                 'status'       => (int) $r->local_product_lot_is_active,
@@ -855,15 +868,17 @@ class TGS_Box_Manager_Ajax
         ));
         if (!$box) self::json_err('Thùng không tồn tại.');
 
-        // Tìm lot theo barcode
+        // Tìm lot theo barcode.
+        $pn_table = self::product_table();
         $lot = $wpdb->get_row($wpdb->prepare(
             "SELECT l.global_product_lot_id, l.global_product_lot_barcode,
                     l.global_box_manager_id, l.local_product_lot_is_active,
                     l.lot_code, l.exp_date,
-                    pn.local_product_name, pn.local_product_sku
+                    pn.global_product_name AS product_name,
+                    COALESCE(NULLIF(l.local_product_sku, ''), pn.global_product_sku) AS product_sku
              FROM {$lots} l
-             LEFT JOIN {$wpdb->prefix}local_product_name pn
-                    ON pn.local_product_name_id = l.local_product_name_id
+             LEFT JOIN {$pn_table} pn
+                    ON pn.global_product_name_id = COALESCE(NULLIF(l.global_product_name_id, 0), l.local_product_name_id)
              WHERE l.global_product_lot_barcode = %s AND l.is_deleted = 0
              LIMIT 1",
             $barcode
@@ -890,8 +905,8 @@ class TGS_Box_Manager_Ajax
         self::json_ok([
             'lot_id'       => (int) $lot->global_product_lot_id,
             'barcode'      => $lot->global_product_lot_barcode,
-            'product_name' => $lot->local_product_name ?: '-',
-            'product_sku'  => $lot->local_product_sku ?: '-',
+            'product_name' => $lot->product_name ?: '-',
+            'product_sku'  => $lot->product_sku ?: '-',
             'lot_code'     => $lot->lot_code ?: '-',
             'exp_date'     => $lot->exp_date,
             'status'       => $status,
@@ -977,13 +992,13 @@ class TGS_Box_Manager_Ajax
         $show_status = intval($_REQUEST['show_status'] ?? 0);
 
         $table = self::box_table();
-        $pn_table = $wpdb->prefix . 'local_product_name';
+        $pn_table = self::product_table();
         $placeholders = implode(',', array_fill(0, count($box_ids), '%d'));
 
         $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT b.*, pn.local_product_name AS product_name
+            "SELECT b.*, pn.global_product_name AS product_name
              FROM {$table} b
-             LEFT JOIN {$pn_table} pn ON pn.local_product_name_id = b.local_product_name_id
+             LEFT JOIN {$pn_table} pn ON pn.global_product_name_id = b.local_product_name_id
              WHERE b.box_id IN ({$placeholders}) AND b.is_deleted = 0",
             ...$box_ids
         ));
@@ -1239,17 +1254,19 @@ class TGS_Box_Manager_Ajax
         $show_variant = !empty($_REQUEST['show_variant']);
         $show_lot     = !empty($_REQUEST['show_lot']);
 
-        // Query lots + product info
+        // Query lots + product info từ catalog global.
         $lots_table = self::lots_table();
-        $pn_table   = $wpdb->prefix . 'local_product_name';
+        $pn_table   = self::product_table();
         $ph = implode(',', array_fill(0, count($barcodes), '%s'));
 
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT l.global_product_lot_id, l.global_product_lot_barcode,
                     l.lot_code, l.exp_date,
-                    pn.local_product_name, pn.local_product_price_after_tax
+                    pn.global_product_name AS product_name,
+                    pn.global_product_price_after_tax AS product_price_after_tax
              FROM {$lots_table} l
-             LEFT JOIN {$pn_table} pn ON pn.local_product_name_id = l.local_product_name_id
+             LEFT JOIN {$pn_table} pn
+                    ON pn.global_product_name_id = COALESCE(NULLIF(l.global_product_name_id, 0), l.local_product_name_id)
              WHERE l.global_product_lot_barcode IN ({$ph}) AND l.is_deleted = 0",
             ...$barcodes
         ));
@@ -1294,8 +1311,8 @@ class TGS_Box_Manager_Ajax
             $lid = $r ? (int) $r->global_product_lot_id : 0;
             $items[] = [
                 'barcode'  => $bc,
-                'name'     => $r->local_product_name ?? '',
-                'price'    => $r->local_product_price_after_tax ?? '',
+                'name'     => $r->product_name ?? '',
+                'price'    => $r->product_price_after_tax ?? '',
                 'variant'  => isset($variant_map[$lid]) ? implode(', ', $variant_map[$lid]) : '',
                 'lot_code' => $r->lot_code ?? '',
                 'exp_date' => ($r->exp_date ?? '') !== '0000-00-00' ? ($r->exp_date ?? '') : '',
